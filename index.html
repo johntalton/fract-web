@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script type="module" defer async>
+			let X1 = -2
+			let Y1 = -2
+			let X2 = 2
+			let Y2 = 2
+
+
+			function pallet(index) {
+				return `hsl(${index * 2.5} 80% 50%)`
+			}
+
+			const setPixelR = (x, y, c) => {
+				context.fillStyle = c
+				context.fillRect(x, y, 1, 1)
+			}
+
+			const setPixelC = (x, y, c) => {
+				context.fillStyle = c
+				context.beginPath()
+				context.ellipse(x, y, 1, 1, 0, 0, 360)
+				context.fill()
+			}
+
+			const setPixel = setPixelR
+
+			function calcDepthRaw(cx, cy, depth) {
+				let count = 0
+				let isqr = 0
+				let jsqr = 0
+				let i = 0
+				let j = 0
+
+				while(((isqr + jsqr) < 4) && (count < depth)) {
+					count += 1
+					j = 2 * i * j + cy
+					i = isqr - jsqr + cx
+
+					isqr = Math.pow(i, 2)
+					jsqr = Math.pow(j, 2)
+				}
+
+				return count
+			}
+
+			function render() {
+				const resCache = {
+				}
+
+				let lookups = 0
+				let total = 0
+
+				function calcDepth(cx, cy, depth) {
+					total += 1
+
+					const res = 100000
+					const x = cx // Math.trunc(cx * res) / res
+					const y = cy // Math.trunc(cy * res) / res
+
+					if(resCache[res] === undefined) {
+						resCache[res] = {}
+					}
+
+					const foo = resCache[res][`${x}:${y}`]
+					if(foo !== undefined) {
+						return foo
+					}
+
+					lookups += 1
+
+					const count = calcDepthRaw(x, y, depth)
+					resCache[res][`${x}:${y}`] = count
+
+					return count
+				}
+
+				const depth = 1500
+
+				const widthM1 = canvas.width - 1
+				const heightM1 = canvas.height - 1
+
+				performance.mark('xy-start')
+
+				for(let x = 0; x < canvas.width; x++) {
+					const cx = X1 + (x * (X2 - X1) / widthM1)
+
+					for(let y = 0; y < canvas.height; y++) {
+						const cy = Y1 + (y * (Y2 - Y1) / heightM1)
+
+						const count = calcDepth(cx, cy, depth)
+
+						setPixel(x, y, count === depth ? 'black' : pallet(count))
+					}
+				}
+
+				performance.mark('xy-end')
+
+
+				const m = performance.measure(
+					'xy-duration', 'xy-start', 'xy-end'
+				)
+				console.log(m.duration)
+
+
+				const pct = (total - lookups) / total
+				// console.warn({ lookups, total, pct })
+				console.info('pct', pct * 100)
+			}
+
+			const canvas = document.getElementById('kvs')
+			const context = canvas.getContext('2d', { colorSpace: "display-p3" })
+			context.imageSmoothingEnabled = false
+
+			requestAnimationFrame(render)
+
+			let screenCache = {}
+			const viewCache = [
+				{ x1: X1, y1: Y1, x2: X2, y2: Y2 }
+			]
+
+			canvas.addEventListener('mousedown', event => {
+				// drag = true
+				const x = document.getElementById('skrn')
+
+				screenCache = { x1: event.offsetX, y1: event.offsetY }
+
+				x.style.setProperty('--x1', `${event.offsetX}px`)
+				x.style.setProperty('--y1', `${event.offsetY}px`)
+				x.style.setProperty('--x2', `${event.offsetX}px`)
+				x.style.setProperty('--y2', `${event.offsetY}px`)
+
+				x.toggleAttribute('data-active', true)
+			})
+
+			canvas.addEventListener('mouseup', event => {
+				// drag = false
+				const x = document.getElementById('skrn')
+				x.toggleAttribute('data-active', false)
+
+				const cw = canvas.clientWidth
+				const ch = canvas.clientHeight
+
+				if(Math.abs(event.offsetX - screenCache.x1) < 15) { return }
+				if(Math.abs(event.offsetY - screenCache.y1) < 15) { return }
+
+				const x1r = screenCache.x1 / cw
+				const y1r = screenCache.y1 / ch
+
+				const x2r = event.offsetX / cw
+				const y2r = event.offsetY / ch
+
+
+				const newX1 = X1 + ((X2 - X1) * x1r)
+				const newY1 = Y1 + ((Y2 - Y1) * y1r)
+
+				const newX2 = X1 + ((X2 - X1) * x2r)
+				const newY2 = Y1 + ((Y2 - Y1) * y2r)
+
+				viewCache.push({ x1: X1, y1: Y1, x2: X2, y2: Y2 })
+
+				X1 = newX1
+				Y1 = newY1
+				X2 = newX2
+				Y2 = newY2
+
+				requestAnimationFrame(render)
+			})
+
+			canvas.addEventListener('mousemove', event => {
+				const x = document.getElementById('skrn')
+				if(!x.hasAttribute('data-active')) { return }
+
+				x.style.setProperty('--x2', `${event.offsetX}px`)
+				x.style.setProperty('--y2', `${event.offsetY}px`)
+			})
+
+			document.addEventListener('keyup', event => {
+				// event.keyCode === 8
+				if(event.key !== 'Backspace') { return }
+
+				const last = viewCache.pop()
+				if(last === undefined) { return }
+				console.log('pop', last)
+
+				X1 = last.x1
+				Y1 = last.y1
+				X2 = last.x2
+				Y2 = last.y2
+
+				requestAnimationFrame(render)
+			})
+
+		</script>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			html {
+				display: block;
+				background-color: white;
+			}
+
+			body {
+				display: flex;
+				justify-content: center;
+
+				margin-block-start: 2em;
+				margin-inline: 2em;
+			}
+
+			canvas {
+				cursor: zoom-in;
+
+				display: block;
+				aspect-ratio: 16 / 9;
+
+				width: 100%;
+  			/* max-width: 100vw; */
+
+				/* border: 10px solid transparent; */
+				background-color: transparent;
+				color: transparent;
+				box-shadow: 2px 2px 1em rgb(124, 124, 124);
+			}
+		</style>
+		<style>
+			[data-hug] {
+				display: block;
+				position: relative;
+				width: 100%;
+			}
+
+			[data-screen] {
+				--x1: 50px;
+				--y1: 100px;
+				--x2: 500px;
+				--y2: 200px;
+
+				position: absolute;
+				display: block;
+				pointer-events: none;
+
+				top: var(--y1, 0);
+				left: var(--x1, 0);
+
+				width: calc(var(--x2) - var(--x1));
+				height: calc(var(--y2) - var(--y1));
+
+				border: 1px solid white;
+				background-color: rgb(255 255 255 / 0.25);
+			}
+
+			[data-screen]:not([data-active]) {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<div data-hug>
+			<canvas id="kvs" width="1600" height="900"></canvas>
+			<div id="skrn" data-screen></div>
+		</div>
+	</body>
+</html>
