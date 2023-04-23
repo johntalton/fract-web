@@ -2,63 +2,41 @@
 <html>
 	<head>
 		<script type="module" defer async>
+			let currentBox = { x1: -2, y1: -2, x2: 2, y2: 2 }
+			let screenCache = {}
+			const viewCache = []
+
 			const worker = new Worker('worker.js', { type: 'module' })
 
 			const canvas = document.getElementById('kvs')
 			const context = canvas.getContext('2d', { colorSpace: "display-p3" })
-			context.imageSmoothingEnabled = false
-
-
-			function pallet(index) {
-				return `hsl(${index * 2.5} 80% 50%)`
-			}
-
-			const setPixelR = (x, y, c) => {
-				// console.log(x, y, c)
-				context.fillStyle = c
-				context.fillRect(x, y, 1, 1)
-			}
-
-			const setPixelC = (x, y, c) => {
-				context.fillStyle = c
-				context.beginPath()
-				context.ellipse(x, y, 1, 1, 0, 0, 360)
-				context.fill()
-			}
-
-			const setPixel = setPixelR
-
-
+			context.imageSmoothingEnabled = true
 
 
 			worker.onerror = event => console.warn(event)
 			worker.onmessage = event => {
 				const { data } = event
-				const { box, point, target, depth, maxDepth } = data
-				const { width, height } = target
+				const { box, target, maxDepth, imageBitmap } = data
 
-				const actualWidth = canvas.width
-				const actualHeight = canvas.height
-
-				const rx = (point.x - box.x1) / (box.x2 - box.x1)
-				const ry =  (point.y - box.y1) / (box.y2 - box.y1)
-
-				const actualX = rx * (actualWidth)
-				const actualY =  ry * (actualHeight)
-
-				const color = depth === maxDepth ? 'black' : pallet(depth * 10)
-				setPixel(actualX, actualY, color)
+				context.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height)
 			}
 
+
+			worker.postMessage({
+				target: { width: 160, height: 90 },
+				box: currentBox,
+				maxDepth: 50
+			})
 			worker.postMessage({
 				target: { width: 1600, height: 900 },
-				box: { x1: -2, y1: -2, x2: 2, y2: 2 },
+				box: currentBox,
 				maxDepth: 50
 			})
 
 			canvas.addEventListener('mousedown', event => {
 				// drag = true
 				const x = document.getElementById('skrn')
+				x.toggleAttribute('data-active', true)
 
 				screenCache = { x1: event.offsetX, y1: event.offsetY }
 
@@ -66,8 +44,6 @@
 				x.style.setProperty('--y1', `${event.offsetY}px`)
 				x.style.setProperty('--x2', `${event.offsetX}px`)
 				x.style.setProperty('--y2', `${event.offsetY}px`)
-
-				x.toggleAttribute('data-active', true)
 			})
 
 			canvas.addEventListener('mouseup', event => {
@@ -88,20 +64,30 @@
 				const y2r = event.offsetY / ch
 
 
-				const newX1 = X1 + ((X2 - X1) * x1r)
-				const newY1 = Y1 + ((Y2 - Y1) * y1r)
+				const newX1 = currentBox.x1 + ((currentBox.x2 - currentBox.x1) * x1r)
+				const newY1 = currentBox.y1 + ((currentBox.y2 - currentBox.y1) * y1r)
 
-				const newX2 = X1 + ((X2 - X1) * x2r)
-				const newY2 = Y1 + ((Y2 - Y1) * y2r)
+				const newX2 = currentBox.x1 + ((currentBox.x2 - currentBox.x1) * x2r)
+				const newY2 = currentBox.y1 + ((currentBox.y2 - currentBox.y1) * y2r)
 
-				viewCache.push({ x1: X1, y1: Y1, x2: X2, y2: Y2 })
+				viewCache.push({ ...currentBox })
 
-				X1 = newX1
-				Y1 = newY1
-				X2 = newX2
-				Y2 = newY2
+				currentBox.x1 = newX1
+				currentBox.y1 = newY1
+				currentBox.x2 = newX2
+				currentBox.y2 = newY2
 
-				requestAnimationFrame(render)
+
+				worker.postMessage({
+					target: { width: 160, height: 90 },
+					box: currentBox,
+					maxDepth: 50
+				})
+				worker.postMessage({
+					target: { width: 1600, height: 900 },
+					box: currentBox,
+					maxDepth: 1500
+				})
 			})
 
 			canvas.addEventListener('mousemove', event => {
@@ -120,12 +106,18 @@
 				if(last === undefined) { return }
 				console.log('pop', last)
 
-				X1 = last.x1
-				Y1 = last.y1
-				X2 = last.x2
-				Y2 = last.y2
+				currentBox = last
 
-				requestAnimationFrame(render)
+				worker.postMessage({
+					target: { width: 160, height: 90 },
+					box: currentBox,
+					maxDepth: 50
+				})
+				worker.postMessage({
+					target: { width: 1600, height: 900 },
+					box: currentBox,
+					maxDepth: 1500
+				})
 			})
 
 		</script>

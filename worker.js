@@ -1,11 +1,14 @@
 import { calculateDepth } from './frac.js'
 
-// const width = 100
-// const height = 100
-// const canvas = new OffscreenCanvas(width, height)
+function pallet(index) {
+	// return `rgb(${index}, 0, 255)`
+	return `hsl(${index * 2.5} 80% 50%)`
+}
 
-
-
+const setPixel = (context, x, y, c) => {
+	context.fillStyle = c
+	context.fillRect(x, y, 1, 1)
+}
 
 function* xy(width, height, box) {
 	const widthM1 = width - 1
@@ -17,7 +20,7 @@ function* xy(width, height, box) {
 		for (let y = 0; y < height; y++) {
 			const cy = box.y1 + (y * (box.y2 - box.y1) / heightM1)
 
-			yield { x:cx, y:cy }
+			yield { x:cx, y:cy, tx:x, ty:y }
 		}
 	}
 }
@@ -29,15 +32,26 @@ async function onmessageAsync(msg) {
 	const { box, maxDepth, target } = data
 	const { width, height } = target
 
+	const canvas = new OffscreenCanvas(width, height)
+	const context = canvas.getContext('2d', { colorSpace: 'display-p3' })
+	context.imageSmoothingEnabled = true
+
 	for (const point of xy(width, height, box)) {
 		const d = calculateDepth(point.x, point.y, maxDepth)
-		// console.log(point, d)
-		postMessage({
-			box, point,
-			target,
-			maxDepth, depth: d
-		})
+
+		const color = d === maxDepth ? 'black' : pallet(d)
+
+		setPixel(context, point.tx, point.ty, color)
 	}
+
+	//const imageData = context.getImageData(0, 0, width, height, { colorSpace: 'display-p3' })
+	const imageBitmap = await createImageBitmap(canvas)
+
+	postMessage({
+		box, target, maxDepth,
+
+		imageBitmap
+		}, { transfer: [ imageBitmap ] })
 
 	console.log('Done.')
 }
