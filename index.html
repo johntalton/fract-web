@@ -2,10 +2,11 @@
 <html>
 	<head>
 		<script type="module" defer async>
-			let X1 = -2
-			let Y1 = -2
-			let X2 = 2
-			let Y2 = 2
+			const worker = new Worker('worker.js', { type: 'module' })
+
+			const canvas = document.getElementById('kvs')
+			const context = canvas.getContext('2d', { colorSpace: "display-p3" })
+			context.imageSmoothingEnabled = false
 
 
 			function pallet(index) {
@@ -13,6 +14,7 @@
 			}
 
 			const setPixelR = (x, y, c) => {
+				// console.log(x, y, c)
 				context.fillStyle = c
 				context.fillRect(x, y, 1, 1)
 			}
@@ -26,99 +28,33 @@
 
 			const setPixel = setPixelR
 
-			function calcDepthRaw(cx, cy, depth) {
-				let count = 0
-				let isqr = 0
-				let jsqr = 0
-				let i = 0
-				let j = 0
 
-				while(((isqr + jsqr) < 4) && (count < depth)) {
-					count += 1
-					j = 2 * i * j + cy
-					i = isqr - jsqr + cx
 
-					isqr = Math.pow(i, 2)
-					jsqr = Math.pow(j, 2)
-				}
 
-				return count
+			worker.onerror = event => console.warn(event)
+			worker.onmessage = event => {
+				const { data } = event
+				const { box, point, target, depth, maxDepth } = data
+				const { width, height } = target
+
+				const actualWidth = canvas.width
+				const actualHeight = canvas.height
+
+				const rx = (point.x - box.x1) / (box.x2 - box.x1)
+				const ry =  (point.y - box.y1) / (box.y2 - box.y1)
+
+				const actualX = rx * (actualWidth)
+				const actualY =  ry * (actualHeight)
+
+				const color = depth === maxDepth ? 'black' : pallet(depth * 10)
+				setPixel(actualX, actualY, color)
 			}
 
-			function render() {
-				const resCache = {
-				}
-
-				let lookups = 0
-				let total = 0
-
-				function calcDepth(cx, cy, depth) {
-					total += 1
-
-					const res = 100000
-					const x = cx // Math.trunc(cx * res) / res
-					const y = cy // Math.trunc(cy * res) / res
-
-					if(resCache[res] === undefined) {
-						resCache[res] = {}
-					}
-
-					const foo = resCache[res][`${x}:${y}`]
-					if(foo !== undefined) {
-						return foo
-					}
-
-					lookups += 1
-
-					const count = calcDepthRaw(x, y, depth)
-					resCache[res][`${x}:${y}`] = count
-
-					return count
-				}
-
-				const depth = 1500
-
-				const widthM1 = canvas.width - 1
-				const heightM1 = canvas.height - 1
-
-				performance.mark('xy-start')
-
-				for(let x = 0; x < canvas.width; x++) {
-					const cx = X1 + (x * (X2 - X1) / widthM1)
-
-					for(let y = 0; y < canvas.height; y++) {
-						const cy = Y1 + (y * (Y2 - Y1) / heightM1)
-
-						const count = calcDepth(cx, cy, depth)
-
-						setPixel(x, y, count === depth ? 'black' : pallet(count))
-					}
-				}
-
-				performance.mark('xy-end')
-
-
-				const m = performance.measure(
-					'xy-duration', 'xy-start', 'xy-end'
-				)
-				console.log(m.duration)
-
-
-				const pct = (total - lookups) / total
-				// console.warn({ lookups, total, pct })
-				console.info('pct', pct * 100)
-			}
-
-			const canvas = document.getElementById('kvs')
-			const context = canvas.getContext('2d', { colorSpace: "display-p3" })
-			context.imageSmoothingEnabled = false
-
-			requestAnimationFrame(render)
-
-			let screenCache = {}
-			const viewCache = [
-				{ x1: X1, y1: Y1, x2: X2, y2: Y2 }
-			]
+			worker.postMessage({
+				target: { width: 1600, height: 900 },
+				box: { x1: -2, y1: -2, x2: 2, y2: 2 },
+				maxDepth: 50
+			})
 
 			canvas.addEventListener('mousedown', event => {
 				// drag = true
